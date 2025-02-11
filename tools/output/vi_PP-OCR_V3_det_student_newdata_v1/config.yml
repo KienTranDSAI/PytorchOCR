@@ -135,7 +135,6 @@ Eval:
     - DecodeImage:
         img_mode: BGR
         channel_first: false
-    - DetAug: null
     - DetLabelEncode: null
     - DetResizeForTest: null
     - NormalizeImage:
