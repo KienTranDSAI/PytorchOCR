@@ -12,65 +12,71 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import copy
-import paddle
-import paddle.nn as nn
+import torch
+import torch.nn as nn
 
 # basic_loss
-from .basic_loss import LossFromOutput
+# from .basic_loss import LossFromOutput
 
 # det loss
 from .det_db_loss import DBLoss
-from .det_east_loss import EASTLoss
-from .det_sast_loss import SASTLoss
-from .det_pse_loss import PSELoss
-from .det_fce_loss import FCELoss
-from .det_ct_loss import CTLoss
-from .det_drrg_loss import DRRGLoss
+# from .det_east_loss import EASTLoss
+# from .det_sast_loss import SASTLoss
+# from .det_pse_loss import PSELoss
+# from .det_fce_loss import FCELoss
+# from .det_ct_loss import CTLoss
+# from .det_drrg_loss import DRRGLoss
 
 # rec loss
-from .rec_ctc_loss import CTCLoss
-from .rec_att_loss import AttentionLoss
-from .rec_srn_loss import SRNLoss
-from .rec_ce_loss import CELoss
-from .rec_sar_loss import SARLoss
-from .rec_aster_loss import AsterLoss
-from .rec_pren_loss import PRENLoss
-from .rec_multi_loss import MultiLoss
-from .rec_vl_loss import VLLoss
-from .rec_spin_att_loss import SPINAttentionLoss
-from .rec_rfl_loss import RFLLoss
-from .rec_can_loss import CANLoss
-from .rec_satrn_loss import SATRNLoss
-from .rec_nrtr_loss import NRTRLoss
-from .rec_parseq_loss import ParseQLoss
-from .rec_cppd_loss import CPPDLoss
-from .rec_latexocr_loss import LaTeXOCRLoss
-from .rec_unimernet_loss import UniMERNetLoss
+# from .rec_ctc_loss import CTCLoss
+# from .rec_att_loss import AttentionLoss
+# from .rec_srn_loss import SRNLoss
+# from .rec_ce_loss import CELoss
+# from .rec_sar_loss import SARLoss
+# from .rec_aster_loss import AsterLoss
+# from .rec_pren_loss import PRENLoss
+# from .rec_multi_loss import MultiLoss
+# from .rec_vl_loss import VLLoss
+# from .rec_spin_att_loss import SPINAttentionLoss
+# from .rec_rfl_loss import RFLLoss
+# from .rec_can_loss import CANLoss
+# from .rec_satrn_loss import SATRNLoss
+# from .rec_nrtr_loss import NRTRLoss
+# from .rec_parseq_loss import ParseQLoss
+# from .rec_cppd_loss import CPPDLoss
+# from .rec_latexocr_loss import LaTeXOCRLoss
+# from .rec_unimernet_loss import UniMERNetLoss
 
-# cls loss
-from .cls_loss import ClsLoss
+# # cls loss
+# from .cls_loss import ClsLoss
 
-# e2e loss
-from .e2e_pg_loss import PGLoss
-from .kie_sdmgr_loss import SDMGRLoss
+# # e2e loss
+# from .e2e_pg_loss import PGLoss
+# from .kie_sdmgr_loss import SDMGRLoss
 
-# basic loss function
-from .basic_loss import DistanceLoss
+# # basic loss function
+# from .basic_loss import DistanceLoss
 
-# combined loss function
-from .combined_loss import CombinedLoss
+# # combined loss function
+# from .combined_loss import CombinedLoss
 
-# table loss
-from .table_att_loss import TableAttentionLoss, SLALoss
-from .table_master_loss import TableMasterLoss
+# # table loss
+# from .table_att_loss import TableAttentionLoss, SLALoss
+# from .table_master_loss import TableMasterLoss
 
-# vqa token loss
-from .vqa_token_layoutlm_loss import VQASerTokenLayoutLMLoss
+# # vqa token loss
+# from .vqa_token_layoutlm_loss import VQASerTokenLayoutLMLoss
 
-# sr loss
-from .stroke_focus_loss import StrokeFocusLoss
-from .text_focus_loss import TelescopeLoss
+# # sr loss
+# from .stroke_focus_loss import StrokeFocusLoss
+# from .text_focus_loss import TelescopeLoss
+
+# from .det_basic_loss import BalanceLoss, DiceLoss, MaskL1Loss, BCELoss
 
 
 def build_loss(config):
@@ -111,6 +117,10 @@ def build_loss(config):
         "CPPDLoss",
         "LaTeXOCRLoss",
         "UniMERNetLoss",
+        "BalanceLoss",
+        "DiceLoss",
+        "MaskL1Loss",
+        "BCELoss"
     ]
     config = copy.deepcopy(config)
     module_name = config.pop("name")

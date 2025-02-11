@@ -20,17 +20,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import paddle
-from paddle import nn
+import torch
+import torch.nn as nn
 
 from .det_basic_loss import BalanceLoss, MaskL1Loss, DiceLoss
 
 
-class DBLoss(nn.Layer):
+class DBLoss(nn.Module):
     """
     Differentiable Binarization (DB) Loss Function
     args:
-        param (dict): the super paramter for DB Loss
+        param (dict): the super parameter for DB Loss
     """
 
     def __init__(
@@ -62,6 +62,14 @@ class DBLoss(nn.Layer):
             label_shrink_map,
             label_shrink_mask,
         ) = labels[1:]
+        
+        # Move labels to the same device as predictions
+        device = predict_maps.device
+        label_threshold_map = label_threshold_map.to(device)
+        label_threshold_mask = label_threshold_mask.to(device)
+        label_shrink_map = label_shrink_map.to(device)
+        label_shrink_mask = label_shrink_mask.to(device)
+        
         shrink_maps = predict_maps[:, 0, :, :]
         threshold_maps = predict_maps[:, 1, :, :]
         binary_maps = predict_maps[:, 2, :, :]
@@ -75,18 +83,19 @@ class DBLoss(nn.Layer):
         loss_binary_maps = self.dice_loss(
             binary_maps, label_shrink_map, label_shrink_mask
         )
+        
         loss_shrink_maps = self.alpha * loss_shrink_maps
         loss_threshold_maps = self.beta * loss_threshold_maps
+
         # CBN loss
-        if "distance_maps" in predicts.keys():
+        if "distance_maps" in predicts:
             distance_maps = predicts["distance_maps"]
             cbn_maps = predicts["cbn_maps"]
             cbn_loss = self.bce_loss(
                 cbn_maps[:, 0, :, :], label_shrink_map, label_shrink_mask
             )
         else:
-            dis_loss = paddle.to_tensor([0.0])
-            cbn_loss = paddle.to_tensor([0.0])
+            cbn_loss = torch.tensor(0.0, device=device)
 
         loss_all = loss_shrink_maps + loss_threshold_maps + loss_binary_maps
         losses = {

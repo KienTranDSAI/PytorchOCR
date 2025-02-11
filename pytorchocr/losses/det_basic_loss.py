@@ -19,14 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-import paddle
-from paddle import nn
-import paddle.nn.functional as F
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
-class BalanceLoss(nn.Layer):
+class BalanceLoss(nn.Module):
     def __init__(
         self,
         balance_loss=True,
@@ -81,10 +79,10 @@ class BalanceLoss(nn.Layer):
         """
         The BalanceLoss for Differentiable Binarization text detection
         args:
-            pred (variable): predicted feature maps.
-            gt (variable): ground truth feature maps.
-            mask (variable): masked maps.
-        return: (variable) balanced loss
+            pred (tensor): predicted feature maps
+            gt (tensor): ground truth feature maps
+            mask (tensor): masked maps
+        return: (tensor) balanced loss
         """
         positive = gt * mask
         negative = (1 - gt) * mask
@@ -98,23 +96,24 @@ class BalanceLoss(nn.Layer):
 
         positive_loss = positive * loss
         negative_loss = negative * loss
-        negative_loss = paddle.reshape(negative_loss, shape=[-1])
+        negative_loss = negative_loss.reshape(-1)
+        
         if negative_count > 0:
-            sort_loss = negative_loss.sort(descending=True)
-            negative_loss = sort_loss[:negative_count]
-            # negative_loss, _ = paddle.topk(negative_loss, k=negative_count_int)
+            negative_loss, _ = torch.sort(negative_loss, descending=True)
+            negative_loss = negative_loss[:negative_count]
             balance_loss = (positive_loss.sum() + negative_loss.sum()) / (
                 positive_count + negative_count + self.eps
             )
         else:
             balance_loss = positive_loss.sum() / (positive_count + self.eps)
+            
         if self.return_origin:
             return balance_loss, loss
 
         return balance_loss
 
 
-class DiceLoss(nn.Layer):
+class DiceLoss(nn.Module):
     def __init__(self, eps=1e-6):
         super(DiceLoss, self).__init__()
         self.eps = eps
@@ -123,21 +122,20 @@ class DiceLoss(nn.Layer):
         """
         DiceLoss function.
         """
-
         assert pred.shape == gt.shape
         assert pred.shape == mask.shape
         if weights is not None:
             assert weights.shape == mask.shape
             mask = weights * mask
-        intersection = paddle.sum(pred * gt * mask)
+        intersection = torch.sum(pred * gt * mask)
 
-        union = paddle.sum(pred * mask) + paddle.sum(gt * mask) + self.eps
+        union = torch.sum(pred * mask) + torch.sum(gt * mask) + self.eps
         loss = 1 - 2.0 * intersection / union
         assert loss <= 1
         return loss
 
 
-class MaskL1Loss(nn.Layer):
+class MaskL1Loss(nn.Module):
     def __init__(self, eps=1e-6):
         super(MaskL1Loss, self).__init__()
         self.eps = eps
@@ -146,12 +144,12 @@ class MaskL1Loss(nn.Layer):
         """
         Mask L1 Loss
         """
-        loss = (paddle.abs(pred - gt) * mask).sum() / (mask.sum() + self.eps)
-        loss = paddle.mean(loss)
+        loss = (torch.abs(pred - gt) * mask).sum() / (mask.sum() + self.eps)
+        loss = torch.mean(loss)
         return loss
 
 
-class BCELoss(nn.Layer):
+class BCELoss(nn.Module):
     def __init__(self, reduction="mean"):
         super(BCELoss, self).__init__()
         self.reduction = reduction
