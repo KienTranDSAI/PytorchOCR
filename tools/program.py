@@ -32,7 +32,7 @@ import copy
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import torch
 import platform
-
+from pytorchocr.utils.save_load import save_model
 # from ppocr.utils.stats import TrainingStats
 # from ppocr.utils.save_load import save_model
 # from ppocr.utils.utility import print_dict, AverageMeter
@@ -236,14 +236,17 @@ def train(
     lr_scheduler,
     post_process_class,
     eval_class,
+    pre_best_model_dict,
+    step_pre_epoch
 ):
-    start_epoch = 0
     epoch_num = config["Global"]["epoch_num"]
     eval_batch_step = config["Global"]["eval_batch_step"]
     eval_batch_epoch = config["Global"].get("eval_batch_epoch", None)
 
     print_batch_step = config["Global"]["print_batch_step"]
     global_step = 0
+    if "global_step" in pre_best_model_dict:
+        global_step = pre_best_model_dict["global_step"]
     start_eval_step = 0
     if isinstance(eval_batch_step, list) and len(eval_batch_step) >= 2:
         start_eval_step = eval_batch_step[0] if not eval_batch_epoch else 0
@@ -252,13 +255,37 @@ def train(
             if not eval_batch_epoch
             else step_pre_epoch * eval_batch_epoch
         )
+    save_epoch_step = config["Global"]["save_epoch_step"]
+    save_model_dir = config["Global"]["save_model_dir"]
+    if not os.path.exists(save_model_dir):
+        os.makedirs(save_model_dir)
+    main_indicator = eval_class.main_indicator
+    best_model_dict = {main_indicator: 0}
+    best_model_dict.update(pre_best_model_dict)
+    model_average = False
+    model.train()
+    total_samples = 0
+    train_reader_cost = 0.0
+    train_batch_cost = 0.0
+    reader_start = time.time()
     
+    start_epoch = (
+        best_model_dict["start_epoch"] if "start_epoch" in best_model_dict else 1
+    )
+    max_iter = (
+        len(train_dataloader) - 1
+        if platform.system() == "Windows"
+        else len(train_dataloader)
+    )
     for epoch in range(start_epoch, epoch_num + 1):
         for idx, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="Training Progress"):
+            
             model.to(device)
             batch = [item.to(device) for item in batch]  
-            model.train()
-            preds = model(batch[0])
+            train_reader_cost += time.time() - reader_start
+            # model.train()
+            images = batch[0]
+            preds = model(images)
             preds = to_float32(preds)
             
             loss = loss_class(preds, batch)
@@ -269,21 +296,88 @@ def train(
             optimizer.zero_grad()
 
             global_step += 1
+            total_samples += len(images)
+            # post_result = post_process_class(preds, batch[1])
+            # eval_class(post_result, batch)
+            # metric = eval_class.get_metric()
+            train_batch_time = time.time() - reader_start
+            train_batch_cost += train_batch_time
             if not isinstance(lr_scheduler, float):
                 lr_scheduler.step()
-
-        if global_step > start_eval_step and (global_step - start_eval_step) % eval_batch_step == 0:
-            cur_metric = eval(
-                    model,
-                    valid_dataloader,
-                    post_process_class,
-                    eval_class,
-                    device)
-            cur_metric_str = "cur metric, {}".format(
-                    ", ".join(["{}: {}".format(k, v) for k, v in cur_metric.items()])
+            stats = {
+                k: float(v) if v.shape == [] else v.detach().cpu().numpy().mean()
+                for k, v in loss.items()
+            }
+            if (global_step > 0 and global_step % print_batch_step == 0) or (
+                idx >= len(train_dataloader) - 1
+            ):
+                strs = (
+                    "epoch: [{}/{}], global_step: {}, avg_reader_cost: "
+                    "{:.5f} s, avg_batch_cost: {:.5f} s, avg_samples: {}, "
+                    "ips: {:.5f} samples/s".format(
+                        epoch,
+                        epoch_num,
+                        global_step,
+                        train_reader_cost / print_batch_step,
+                        train_batch_cost / print_batch_step,
+                        total_samples / print_batch_step,
+                        total_samples / train_batch_cost,
+                    )
                 )
-            print(cur_metric_str)
-            
+                print(strs)
+                total_samples = 0
+                train_reader_cost = 0.0
+                train_batch_cost = 0.0
+
+            if global_step > start_eval_step and (global_step - start_eval_step) % eval_batch_step == 0:
+                cur_metric = eval(
+                        model,
+                        valid_dataloader,
+                        post_process_class,
+                        eval_class,
+                        device)
+                cur_metric_str = "cur metric, {}".format(
+                        ", ".join(["{}: {}".format(k, v) for k, v in cur_metric.items()])
+                    )
+                print(cur_metric_str)
+                if cur_metric[main_indicator] >= best_model_dict[main_indicator]:
+                    best_model_dict.update(cur_metric)
+                    best_model_dict["best_epoch"] = epoch
+                    prefix = "best_accuracy"
+                    model_info = None
+                    save_model(
+                        model,
+                        optimizer,
+                        save_model_dir,
+                        config,
+                        is_best=True,
+                        prefix=prefix,
+                        model_info=None,
+                        best_model_dict=best_model_dict,
+                        epoch=epoch,
+                        global_step=global_step,
+                    )
+        if epoch > 0 and epoch % save_epoch_step == 0:
+            prefix = "iter_epoch_{}".format(epoch)
+            model_info = None
+            save_model(
+                model,
+                optimizer,
+                save_model_dir,
+                config,
+                is_best=False,
+                prefix=prefix,
+                model_info=None,
+                best_model_dict=best_model_dict,
+                epoch=epoch,
+                global_step=global_step,
+                done_flag=epoch == config["Global"]["epoch_num"],
+            )
+    best_str = "best metric, {}".format(
+        ", ".join(["{}: {}".format(k, v) for k, v in best_model_dict.items()])
+    )
+    print(best_str)
+                
 def eval(model,
         valid_dataloader,
         post_process_class,

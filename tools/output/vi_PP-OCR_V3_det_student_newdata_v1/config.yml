@@ -10,7 +10,7 @@ Global:
   - 0
   - 10
   cal_metric_during_train: false
-  pretrained_model: /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/ch_ptocr_v3_det_infer_student.pth
+  pretrained_model: /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/ch_ptocr_v3_det_distill_train
   checkpoints: null
   save_inference_dir: null
   use_visualdl: false

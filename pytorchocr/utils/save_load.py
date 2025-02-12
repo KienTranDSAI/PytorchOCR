@@ -28,38 +28,13 @@ def load_model(config, model, optimizer=None, model_type="det"):
     pretrained_model = global_config.get("pretrained_model")
     best_model_dict = {}
     is_float16 = False
-    is_nlp_model = model_type == "kie" and config["Architecture"]["algorithm"] not in ["SDMGR"]
 
-    if is_nlp_model:
-        # NOTE: for kie model distillation, resume training is not supported now
-        if config["Architecture"]["algorithm"] in ["Distillation"]:
-            return best_model_dict
-        checkpoints = config["Architecture"]["Backbone"]["checkpoints"]
-        # Load kie method metric
-        if checkpoints:
-            checkpoint_path = os.path.join(checkpoints, "metric.states")
-            if os.path.exists(checkpoint_path):
-                with open(checkpoint_path, "rb") as f:
-                    states_dict = pickle.load(f, encoding="latin1")
-                best_model_dict = states_dict.get("best_model_dict", {})
-                if "epoch" in states_dict:
-                    best_model_dict["start_epoch"] = states_dict["epoch"] + 1
-            print(f"Resuming from {checkpoints}")
-
-            if optimizer is not None:
-                optim_path = checkpoints + ".optim.pth"
-                if os.path.exists(optim_path):
-                    optimizer.load_state_dict(torch.load(optim_path))
-                else:
-                    print(f"{optim_path} not found, optimizer params not loaded")
-
-        return best_model_dict
 
     if checkpoints:
-        assert os.path.exists(checkpoints + ".pth"), f"The {checkpoints}.pth does not exist!"
+        assert os.path.exists(checkpoints + '.pth'), f"The {checkpoints + '.pth'} does not exist!"
 
         # Load params from trained model
-        params = torch.load(checkpoints + ".pth")
+        params = torch.load(checkpoints + '.pth')
         state_dict = model.state_dict()
         new_state_dict = {}
         for key, value in state_dict.items():
@@ -98,7 +73,19 @@ def load_model(config, model, optimizer=None, model_type="det"):
         print("Training from scratch")
     best_model_dict["is_float16"] = is_float16
     return best_model_dict
+def maybe_download_params(path):
 
+    """Check if parameter file exists, return the path directly if it does"""
+
+    if os.path.exists(path + '.pth'):
+
+        return path
+
+    else:
+
+        # For now, just return the path as-is since we're not implementing download logic
+
+        return path
 def load_pretrained_params(model, path):
     path = maybe_download_params(path)
     assert os.path.exists(path + ".pth"), f"The {path}.pth does not exist!"
@@ -159,6 +146,7 @@ def save_model(model, optimizer, model_path, config, is_best=False, prefix="mode
         print(f"Best model saved to {model_prefix}")
     else:
         print(f"Model saved to {model_prefix}")
+
 
 def main():
     # Example main function to use these methods

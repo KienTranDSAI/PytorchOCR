@@ -17,7 +17,7 @@ from pytorchocr.modeling.architectures import build_model
 from pytorchocr.losses import build_loss
 from pytorchocr.optimizer import build_optimizer
 from pytorchocr.utils.utility import *
-from pytorchocr.utils.save_load import fast_load_model
+from pytorchocr.utils.save_load import load_model, fast_load_model
 from pytorchocr.metrics import build_metric
 from tqdm import tqdm
 
@@ -41,16 +41,19 @@ def main(config, device, seed):
         )
     eval_class = build_metric(config["Metric"])
     
-    checkpoints = global_config.get("checkpoints")
-    pretrained_model = global_config.get("pretrained_model")
-    if checkpoints:
-        ckt_pth = checkpoints
-    elif pretrained_model:
-        ckt_pth = pretrained_model
-    else: 
-        ckt_pth = None
-    if ckt_pth:
-        fast_load_model(model, ckt_pth)
+    # checkpoints = global_config.get("checkpoints")
+    # pretrained_model = global_config.get("pretrained_model")
+    # if checkpoints:
+    #     ckt_pth = checkpoints
+    # elif pretrained_model:
+    #     ckt_pth = pretrained_model
+    # else: 
+    #     ckt_pth = None
+    # if ckt_pth:
+    #     fast_load_model(model, ckt_pth)
+    pre_best_model_dict = load_model(
+        config, model, optimizer, config["Architecture"]["model_type"]
+    )
     program.train(config,
                  train_dataloader,
                  valid_dataloader,
@@ -60,7 +63,9 @@ def main(config, device, seed):
                  optimizer,
                  lr_scheduler,
                  post_process_class,
-                 eval_class,)
+                 eval_class,
+                 pre_best_model_dict,
+                 step_pre_epoch)
                 
 if __name__ == "__main__":
     config = preprocess(is_train=True)
