@@ -49,6 +49,12 @@ TextDetDataset = SimpleDataSet
 __all__ = ["build_dataloader", "transform", "create_operators", "set_signal_handlers"]
 
 
+def term_mp(sig_num, frame):
+    """kill all child processes"""
+    pid = os.getpid()
+    pgid = os.getpgid(os.getpid())
+    print("main proc {} exit, kill process group " "{}".format(pid, pgid))
+    os.killpg(pgid, signal.SIGKILL)
 
 def set_signal_handlers():
 

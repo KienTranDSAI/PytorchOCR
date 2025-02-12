@@ -17,7 +17,8 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from paddle.optimizer import lr
+import torch
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, StepLR, MultiStepLR
 from .lr_scheduler import CyclicalCosineDecay, OneCycleDecay, TwoStepCosineDecay
 
 
@@ -52,22 +53,18 @@ class Linear(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = lr.PolynomialDecay(
-            learning_rate=self.learning_rate,
-            decay_steps=self.epochs,
-            end_lr=self.end_lr,
-            power=self.power,
-            last_epoch=self.last_epoch,
-        )
-        if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
-                last_epoch=self.last_epoch,
-            )
-        return learning_rate
+        # Return initial learning rate for optimizer creation
+        if callable(self.learning_rate):
+            return self.learning_rate()
+        return self.learning_rate
+
+    def get_lr_lambda(self):
+        def lr_lambda(current_step):
+            if current_step < self.warmup_epoch:
+                return float(current_step) / float(max(1, self.warmup_epoch))
+            else:
+                return (1.0 - self.end_lr) * ((1.0 - float(current_step) / float(self.epochs)) ** self.power) + self.end_lr
+        return lr_lambda
 
 
 class Cosine(object):
@@ -97,20 +94,14 @@ class Cosine(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = lr.CosineAnnealingDecay(
-            learning_rate=self.learning_rate,
-            T_max=self.T_max,
-            last_epoch=self.last_epoch,
-        )
-        if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
-                last_epoch=self.last_epoch,
-            )
-        return learning_rate
+        def lr_lambda(current_step):
+            if current_step < self.warmup_epoch:
+                return float(current_step) / float(max(1, self.warmup_epoch))
+            else:
+                progress = float(current_step - self.warmup_epoch) / float(max(1, self.T_max - self.warmup_epoch))
+                return 0.5 * (1.0 + math.cos(math.pi * progress))
+                
+        return lr_lambda
 
 
 class LinearWarmupCosine(object):
@@ -145,18 +136,16 @@ class LinearWarmupCosine(object):
         self.min_lr = float(min_lr)
 
     def __call__(self):
-        learning_rate = lr.CosineAnnealingDecay(
-            learning_rate=self.learning_rate,
+        learning_rate = CosineAnnealingLR(
+            optimizer=None,
             T_max=self.T_max,
             eta_min=self.min_lr,
             last_epoch=self.last_epoch,
         )
         if self.warmup_steps > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_steps,
-                start_lr=self.start_lr,
-                end_lr=self.learning_rate,
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.start_lr + (self.learning_rate - self.start_lr) * (current_step / self.warmup_steps),
                 last_epoch=self.last_epoch,
             )
         return learning_rate
@@ -179,7 +168,7 @@ class Step(object):
         learning_rate,
         step_size,
         step_each_epoch,
-        gamma,
+        gamma=0.1,
         warmup_epoch=0,
         last_epoch=-1,
         **kwargs,
@@ -192,21 +181,13 @@ class Step(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = lr.StepDecay(
-            learning_rate=self.learning_rate,
-            step_size=self.step_size,
-            gamma=self.gamma,
-            last_epoch=self.last_epoch,
-        )
-        if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
-                last_epoch=self.last_epoch,
-            )
-        return learning_rate
+        def lr_lambda(current_step):
+            if current_step < self.warmup_epoch:
+                return float(current_step) / float(max(1, self.warmup_epoch))
+            else:
+                return self.gamma ** (current_step // self.step_size)
+                
+        return lr_lambda
 
 
 class Piecewise(object):
@@ -235,15 +216,15 @@ class Piecewise(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = lr.PiecewiseDecay(
-            boundaries=self.boundaries, values=self.values, last_epoch=self.last_epoch
+        learning_rate = LambdaLR(
+            optimizer=None,
+            lr_lambda=lambda current_step: self.values[bisect.bisect_right(self.boundaries, current_step) - 1],
+            last_epoch=self.last_epoch,
         )
         if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.values[0],
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.values[0] + (self.values[0] - self.values[1]) * (current_step / self.warmup_epoch),
                 last_epoch=self.last_epoch,
             )
         return learning_rate
@@ -285,11 +266,9 @@ class CyclicalCosine(object):
             last_epoch=self.last_epoch,
         )
         if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.learning_rate + (self.learning_rate - learning_rate) * (current_step / self.warmup_epoch),
                 last_epoch=self.last_epoch,
             )
         return learning_rate
@@ -339,11 +318,9 @@ class OneCycle(object):
             last_epoch=self.last_epoch,
         )
         if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.max_lr,
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.max_lr + (self.max_lr - learning_rate) * (current_step / self.warmup_epoch),
                 last_epoch=self.last_epoch,
             )
         return learning_rate
@@ -367,16 +344,12 @@ class Const(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = self.learning_rate
-        if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
-                last_epoch=self.last_epoch,
-            )
-        return learning_rate
+        def lr_lambda(current_step):
+            if current_step < self.warmup_epoch:
+                return float(current_step) / float(max(1, self.warmup_epoch))
+            return 1.0
+            
+        return lr_lambda
 
 
 class DecayLearningRate(object):
@@ -402,13 +375,12 @@ class DecayLearningRate(object):
         self.decay_steps = step_each_epoch * epochs
 
     def __call__(self):
-        learning_rate = lr.PolynomialDecay(
-            learning_rate=self.learning_rate,
-            decay_steps=self.decay_steps,
-            power=self.factor,
-            end_lr=self.end_lr,
-        )
-        return learning_rate
+        def lr_lambda(current_step):
+            if current_step < self.decay_steps:
+                return (1.0 - self.end_lr) * ((1.0 - float(current_step) / float(self.decay_steps)) ** self.factor) + self.end_lr
+            return self.end_lr
+            
+        return lr_lambda
 
 
 class MultiStepDecay(object):
@@ -441,18 +413,16 @@ class MultiStepDecay(object):
         self.warmup_epoch = round(warmup_epoch * step_each_epoch)
 
     def __call__(self):
-        learning_rate = lr.MultiStepDecay(
-            learning_rate=self.learning_rate,
+        learning_rate = MultiStepLR(
+            optimizer=None,
             milestones=self.milestones,
             gamma=self.gamma,
             last_epoch=self.last_epoch,
         )
         if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.learning_rate * (self.gamma ** (current_step // self.warmup_epoch)),
                 last_epoch=self.last_epoch,
             )
         return learning_rate
@@ -493,11 +463,9 @@ class TwoStepCosine(object):
             last_epoch=self.last_epoch,
         )
         if self.warmup_epoch > 0:
-            learning_rate = lr.LinearWarmup(
-                learning_rate=learning_rate,
-                warmup_steps=self.warmup_epoch,
-                start_lr=0.0,
-                end_lr=self.learning_rate,
+            learning_rate = LambdaLR(
+                optimizer=None,
+                lr_lambda=lambda current_step: self.learning_rate + (self.learning_rate - learning_rate) * (current_step / self.warmup_epoch),
                 last_epoch=self.last_epoch,
             )
         return learning_rate

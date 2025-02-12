@@ -2,7 +2,8 @@ import os
 import imghdr
 import cv2
 import logging
-
+import random
+import numpy as np
 def get_image_file_list(img_file):
     imgs_lists = []
     if img_file is None or not os.path.exists(img_file):
@@ -68,3 +69,6 @@ def check_and_read(img_path):
                 imgs.append(img)
             return imgs, False, True
     return None, False, False
+def set_seed(seed=1024):
+    random.seed(seed)
+    np.random.seed(seed)

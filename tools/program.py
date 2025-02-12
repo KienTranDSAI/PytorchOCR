@@ -31,7 +31,7 @@ import numpy as np
 import copy
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import torch
-
+import platform
 
 # from ppocr.utils.stats import TrainingStats
 # from ppocr.utils.save_load import save_model
@@ -221,13 +221,112 @@ def preprocess(is_train=False):
         log_file = "{}/train.log".format(save_model_dir)
     else:
         log_file = None
-
+    use_gpu = config['Global']['use_gpu']
     alg = config["Architecture"]["algorithm"]
-    device = "cuda:0" if use_gpu else "cpu"
-    check_device(use_gpu)
+    return config
 
-    device = torch.cuda.set_device(device)
+def train(
+    config,
+    train_dataloader,
+    valid_dataloader,
+    device,
+    model,
+    loss_class,
+    optimizer,
+    lr_scheduler,
+    post_process_class,
+    eval_class,
+):
+    start_epoch = 0
+    epoch_num = config["Global"]["epoch_num"]
+    eval_batch_step = config["Global"]["eval_batch_step"]
+    eval_batch_epoch = config["Global"].get("eval_batch_epoch", None)
 
+    print_batch_step = config["Global"]["print_batch_step"]
+    global_step = 0
+    start_eval_step = 0
+    if isinstance(eval_batch_step, list) and len(eval_batch_step) >= 2:
+        start_eval_step = eval_batch_step[0] if not eval_batch_epoch else 0
+        eval_batch_step = (
+            eval_batch_step[1]
+            if not eval_batch_epoch
+            else step_pre_epoch * eval_batch_epoch
+        )
+    
+    for epoch in range(start_epoch, epoch_num + 1):
+        for idx, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="Training Progress"):
+            model.to(device)
+            batch = [item.to(device) for item in batch]  
+            model.train()
+            preds = model(batch[0])
+            preds = to_float32(preds)
+            
+            loss = loss_class(preds, batch)
+            avg_loss = loss["loss"]
+            
+            avg_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
 
+            global_step += 1
+            if not isinstance(lr_scheduler, float):
+                lr_scheduler.step()
 
-    return config, device
+        if global_step > start_eval_step and (global_step - start_eval_step) % eval_batch_step == 0:
+            cur_metric = eval(
+                    model,
+                    valid_dataloader,
+                    post_process_class,
+                    eval_class,
+                    device)
+            cur_metric_str = "cur metric, {}".format(
+                    ", ".join(["{}: {}".format(k, v) for k, v in cur_metric.items()])
+                )
+            print(cur_metric_str)
+            
+def eval(model,
+        valid_dataloader,
+        post_process_class,
+        eval_class,
+        device):
+    model.to(device)
+    model.eval()
+    with torch.no_grad():
+        total_frame = 0.0
+        total_time = 0.0
+        pbar = tqdm(
+            total=len(valid_dataloader), desc="eval model:", position=0, leave=True
+        )
+        max_iter = (
+            len(valid_dataloader) - 1
+            if platform.system() == "Windows"
+            else len(valid_dataloader)
+        )
+        sum_images = 0
+        for idx, batch in enumerate(valid_dataloader):
+            batch = [item.to(device) for item in batch] 
+            if idx >= max_iter:
+                break
+            images = batch[0]
+            start = time.time()
+            preds = model(images)
+            batch_numpy = []
+            for item in batch:
+                if isinstance(item, torch.Tensor):
+                    batch_numpy.append(item.cpu().numpy())
+                else:
+                    batch_numpy.append(item)
+            total_time += time.time() - start
+            post_result = post_process_class(preds, batch_numpy[1])
+            eval_class(post_result, batch_numpy)
+            pbar.update(1)
+            total_frame += len(images)
+            sum_images += 1
+        metric = eval_class.get_metric()
+    pbar.close()
+    model.train()
+    if total_time > 0:
+        metric["fps"] = total_frame / total_time
+    else:
+        metric["fps"] = 0
+    return metric
