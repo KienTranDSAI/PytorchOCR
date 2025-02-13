@@ -19,7 +19,7 @@ def _mkdir_if_not_exist(path):
             else:
                 raise OSError(f"Failed to mkdir {path}")
 
-def load_model(config, model, optimizer=None, model_type="det"):
+def load_model(config, model, optimizer=None, model_type="det", device = "cpu"):
     """
     Load model from checkpoint or pretrained_model
     """
@@ -34,7 +34,7 @@ def load_model(config, model, optimizer=None, model_type="det"):
         assert os.path.exists(checkpoints + '.pth'), f"The {checkpoints + '.pth'} does not exist!"
 
         # Load params from trained model
-        params = torch.load(checkpoints + '.pth')
+        params = torch.load(checkpoints + '.pth', map_location='cpu')
         state_dict = model.state_dict()
         new_state_dict = {}
         for key, value in state_dict.items():
@@ -51,11 +51,20 @@ def load_model(config, model, optimizer=None, model_type="det"):
             else:
                 print(f"Shape mismatch for {key}: {value.shape} vs {pre_value.shape}")
         model.load_state_dict(new_state_dict)
+        model.to(device)
 
         if optimizer is not None:
             optim_path = checkpoints + ".optim.pth"
             if os.path.exists(optim_path):
-                optimizer.load_state_dict(torch.load(optim_path))
+                optim_state = torch.load(optim_path, map_location='cpu')  # Load to CPU first
+                # Move optimizer state to the same device as model
+                print(f"Device in optimizer: {device}")
+                for state in optim_state['state'].values():
+                    for k, v in state.items():
+                        if isinstance(v, torch.Tensor):
+                            state[k] = v.to(device)
+                optimizer.load_state_dict(optim_state)
+                print("Load optimizer sucessfully!")
             else:
                 print(f"{optim_path} not found, optimizer params not loaded")
 

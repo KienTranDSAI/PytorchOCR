@@ -239,6 +239,7 @@ def train(
     pre_best_model_dict,
     step_pre_epoch
 ):
+    model.to(device)
     epoch_num = config["Global"]["epoch_num"]
     eval_batch_step = config["Global"]["eval_batch_step"]
     eval_batch_epoch = config["Global"].get("eval_batch_epoch", None)
@@ -278,9 +279,9 @@ def train(
         else len(train_dataloader)
     )
     for epoch in range(start_epoch, epoch_num + 1):
-        for idx, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="Training Progress"):
+        # for idx, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc="Training Progress"):
+        for idx, batch in enumerate(train_dataloader):
             
-            model.to(device)
             batch = [item.to(device) for item in batch]  
             train_reader_cost += time.time() - reader_start
             # model.train()
@@ -311,19 +312,23 @@ def train(
             if (global_step > 0 and global_step % print_batch_step == 0) or (
                 idx >= len(train_dataloader) - 1
             ):
+                lr = optimizer.param_groups[0]["lr"]
                 strs = (
-                    "epoch: [{}/{}], global_step: {}, avg_reader_cost: "
+                    "epoch: [{}/{}], global_step: {}, lr: {:.6f}, avg_reader_cost: "
                     "{:.5f} s, avg_batch_cost: {:.5f} s, avg_samples: {}, "
                     "ips: {:.5f} samples/s".format(
                         epoch,
                         epoch_num,
                         global_step,
+                        lr,
                         train_reader_cost / print_batch_step,
                         train_batch_cost / print_batch_step,
                         total_samples / print_batch_step,
                         total_samples / train_batch_cost,
                     )
                 )
+                loss_str = ", ".join([f"{k}: {v:.5f}" for k, v in stats.items()])
+                strs += f", {loss_str}"
                 print(strs)
                 total_samples = 0
                 train_reader_cost = 0.0

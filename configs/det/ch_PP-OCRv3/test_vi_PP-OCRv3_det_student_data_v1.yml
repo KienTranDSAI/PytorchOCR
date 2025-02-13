@@ -1,18 +1,18 @@
 Global:
   debug: false
   use_gpu: true
-  epoch_num: 700
+  epoch_num: 100
   log_smooth_window: 20
-  print_batch_step: 2
-  save_model_dir: ./output/vi_PP-OCR_V3_det_student_newdata_v1/
-  save_epoch_step: 20
+  print_batch_step: 40
+  save_model_dir: ./output/vi_PP-OCR_V3_det_student_newdata_v2/
+  save_epoch_step: 3
   eval_batch_step:
   - 0
-  - 10
+  - 125
   cal_metric_during_train: false
   # pretrained_model: /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/vi_ptocr_v3_det_infer_student
   pretrained_model: /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/ch_ptocr_v3_det_distill_train
-  checkpoints: null
+  checkpoints: /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/tools/output/vi_PP-OCR_V3_det_student_newdata_v2/iter_epoch_9
   save_inference_dir: null
   use_visualdl: false
   infer_img: doc/imgs_en/img_10.jpg

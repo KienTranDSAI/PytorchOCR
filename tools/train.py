@@ -52,7 +52,7 @@ def main(config, device, seed):
     # if ckt_pth:
     #     fast_load_model(model, ckt_pth)
     pre_best_model_dict = load_model(
-        config, model, optimizer, config["Architecture"]["model_type"]
+        config, model, optimizer, config["Architecture"]["model_type"], device
     )
     program.train(config,
                  train_dataloader,
