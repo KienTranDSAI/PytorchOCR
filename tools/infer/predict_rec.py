@@ -74,6 +74,13 @@ class TextRecognizer(BaseOCRV20):
                 "character_dict_path": None,
                 "use_space_char": args.use_space_char
             }
+        elif self.rec_algorithm == "CRNN":
+            postprocess_params = {
+                'name': 'CTCLabelDecode',
+                "character_dict_path": args.rec_char_dict_path,
+                "use_space_char": args.use_space_char
+            }
+        print(args.rec_char_dict_path)
         self.postprocess_op = build_post_process(postprocess_params)
 
         use_gpu = args.use_gpu

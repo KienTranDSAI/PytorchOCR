@@ -73,7 +73,7 @@ if __name__ == '__main__':
            'Backbone':{'name':'MobileNetV3', 'model_name':'large', 'scale':0.5, 'disable_se':True},
            'Neck':{'name':'RSEFPN', 'out_channels':96, 'shortcut': True},
            'Head':{'name':'DBHead', 'k':50}}
-    # paddle_pretrained_model_path = os.path.join(os.path.abspath(args.src_model_path), 'best_accuracy')
+    paddle_pretrained_model_path = os.path.join(os.path.abspath(args.src_model_path), 'best_accuracy')
     paddle_pretrained_model_path = os.path.abspath(args.src_model_path)
     converter = PPOCRv3DetConverter(cfg, paddle_pretrained_model_path)
 
@@ -90,12 +90,13 @@ if __name__ == '__main__':
     # save
     save_basename = os.path.basename(os.path.abspath(args.src_model_path))
 
-    save_name = 'ch_ptocr_v3_det_infer_student.pth'
+    save_name = './pretrained_models/ch_ptocr_v3_det_distull_student.pth'
 
     converter.save_pytorch_weights(save_name)
 
     print('done.')
 
 ##Infer:
-# python ./tools/infer/predict_det.py --det_model_path /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/ch_ptocr_v3_det_infer_student.pth --det_yaml_path /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR/output/vi_PP-OCR_V3_det_augmentation_ver1/config.yml --image_dir /raid/kientdt/shared_drive_cv/ocr/kientdt/mmocr/data/mydata/textdet_imgs/test/03_2022_NQ-HDTP_471890_page_num_6_block_num_4.png##Convert:
+# python ./tools/infer/predict_det.py --det_model_path /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR2Pytorch/ch_ptocr_v3_det_infer_student.pth --det_yaml_path /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR/output/vi_PP-OCR_V3_det_augmentation_ver1/config.yml --image_dir /raid/kientdt/shared_drive_cv/ocr/kientdt/mmocr/data/mydata/textdet_imgs/test/03_2022_NQ-HDTP_471890_page_num_6_block_num_4.png
+# ##Convert:
 # python ./converter/my_converter.py --src_model_path /raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR/output/vi_PP-OCR_V3_det_augmentation_ver1/name...

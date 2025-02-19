@@ -77,8 +77,7 @@ def init_args():
     parser.add_argument(
         "--rec_char_dict_path",
         type=str,
-        default=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                             'pytorchocr/utils/ppocr_keys_v1.txt'))
+        default='/raid/kientdt/shared_drive_cv/ocr/kientdt/PaddleOCR/ppocr/utils/dict/my_vi_dict.txt')
 
     # params for text classifier
     parser.add_argument("--use_angle_cls", type=str2bool, default=False)
@@ -334,7 +333,22 @@ def AnalysisConfig(weights_path, yaml_path=None, char_num=None):
                                        'small_stride': [1, 2, 2, 2]},
                           'Neck': {'name': 'SequenceEncoder', 'hidden_size': 48, 'encoder_type': 'om'},
                           'Head': {'name': 'CTCHead', 'fc_decay': 4e-05}}
-
+    elif 'vi' in weights_name and "rec" in weights_name:
+        network_config = {'model_type':'rec',
+           'algorithm':'CRNN',
+           'Transform':None,
+           'Backbone':{'name':'MobileNetV1Enhance',
+                       'scale':0.5,
+                       'last_conv_stride': [1, 2],
+                       'last_pool_type': 'avg'},
+           'Neck':{'name':'SequenceEncoder',
+                   'dims': 64,
+                   'depth': 2,
+                   'hidden_dims': 120,
+                   'use_guide': True,
+                   'encoder_type':'svtr'},
+           'Head':{'name':'CTCHead', 'fc_decay': 2e-05}
+           }
     else:
         network_config = {'model_type': 'rec',
                           'algorithm': 'CRNN',
