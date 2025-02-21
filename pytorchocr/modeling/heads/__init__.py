@@ -32,13 +32,13 @@ def build_head(config, **kwargs):
     from .rec_sar_head import SARHead
     from .rec_can_head import CANHead
     from .rec_multi_head import MultiHead
-
+    from .rec_visionlan_head import VLHead
     # cls head
     from .cls_head import ClsHead
     support_dict = [
         'DBHead', 'PSEHead', 'EASTHead', 'SASTHead', 'CTCHead', 'ClsHead', 'AttentionHead',
         'SRNHead', 'PGHead', 'Transformer', 'TableAttentionHead','SARHead', 'FCEHead',
-        'CANHead', 'MultiHead', 'PFHeadLocal',
+        'CANHead', 'MultiHead', 'PFHeadLocal', "VLHead"
 
     ]
 

@@ -80,6 +80,13 @@ class TextRecognizer(BaseOCRV20):
                 "character_dict_path": args.rec_char_dict_path,
                 "use_space_char": args.use_space_char
             }
+        elif self.rec_algorithm == "VisionLAN":
+            postprocess_params = {
+                "name": "VLLabelDecode",
+                "character_dict_path": args.rec_char_dict_path,
+                "use_space_char": args.use_space_char,
+                "max_text_length": args.max_text_length,
+            }
         print(args.rec_char_dict_path)
         self.postprocess_op = build_post_process(postprocess_params)
 
@@ -278,7 +285,13 @@ class TextRecognizer(BaseOCRV20):
         pad_shape = padding_im.shape
 
         return padding_im, resize_shape, pad_shape, valid_ratio
-
+    def resize_norm_img_vl(self, img, image_shape):
+        imgC, imgH, imgW = image_shape
+        img = img[:, :, ::-1]  # bgr2rgb
+        resized_image = cv2.resize(img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
+        resized_image = resized_image.astype("float32")
+        resized_image = resized_image.transpose((2, 0, 1)) / 255
+        return resized_image
 
     def norm_img_can(self, img, image_shape):
 
@@ -365,6 +378,12 @@ class TextRecognizer(BaseOCRV20):
                     word_label_list = []
                     norm_img_mask_batch.append(norm_image_mask)
                     word_label_list.append(word_label)
+                elif self.rec_algorithm in ["VisionLAN", "PREN"]:
+                    norm_img = self.resize_norm_img_vl(
+                        img_list[indices[ino]], self.rec_image_shape
+                    )
+                    norm_img = norm_img[np.newaxis, :]
+                    norm_img_batch.append(norm_img)
                 else:
                     norm_img = self.resize_norm_img(img_list[indices[ino]],
                                                     max_wh_ratio)

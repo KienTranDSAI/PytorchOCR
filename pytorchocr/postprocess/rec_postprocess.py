@@ -16,19 +16,78 @@ import string
 #import paddle
 # from paddle.nn import functional as F
 import torch
+from torch.nn import functional as F
 
+# class BaseRecLabelDecode(object):
+#     """ Convert between text-label and text-index """
 
+#     def __init__(self,
+#                  character_dict_path=None,
+#                  use_space_char=False):
+
+#         self.beg_str = "sos"
+#         self.end_str = "eos"
+
+#         self.character_str = []
+#         if character_dict_path is None:
+#             self.character_str = "0123456789abcdefghijklmnopqrstuvwxyz"
+#             dict_character = list(self.character_str)
+#         else:
+#             with open(character_dict_path, "rb") as fin:
+#                 lines = fin.readlines()
+#                 for line in lines:
+#                     line = line.decode('utf-8').strip("\n").strip("\r\n")
+#                     self.character_str.append(line)
+#             if use_space_char:
+#                 self.character_str.append(" ")
+#             dict_character = list(self.character_str)
+
+#         dict_character = self.add_special_char(dict_character)
+#         self.dict = {}
+#         for i, char in enumerate(dict_character):
+#             self.dict[char] = i
+#         self.character = dict_character
+
+#     def add_special_char(self, dict_character):
+#         return dict_character
+
+#     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
+#         """ convert text-index into text-label. """
+#         result_list = []
+#         ignored_tokens = self.get_ignored_tokens()
+#         batch_size = len(text_index)
+#         for batch_idx in range(batch_size):
+#             char_list = []
+#             conf_list = []
+#             for idx in range(len(text_index[batch_idx])):
+#                 if text_index[batch_idx][idx] in ignored_tokens:
+#                     continue
+#                 if is_remove_duplicate:
+#                     # only for predict
+#                     if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
+#                             batch_idx][idx]:
+#                         continue
+#                 char_list.append(self.character[int(text_index[batch_idx][
+#                     idx])])
+#                 if text_prob is not None:
+#                     conf_list.append(text_prob[batch_idx][idx])
+#                 else:
+#                     conf_list.append(1)
+#             text = ''.join(char_list)
+#             result_list.append((text, np.mean(conf_list)))
+#         return result_list
+
+#     def get_ignored_tokens(self):
+#         return [0]  # for ctc blank
 class BaseRecLabelDecode(object):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self,
-                 character_dict_path=None,
-                 use_space_char=False):
-
+    def __init__(self, character_dict_path=None, use_space_char=False):
         self.beg_str = "sos"
         self.end_str = "eos"
-
+        self.reverse = False
         self.character_str = []
+
         if character_dict_path is None:
             self.character_str = "0123456789abcdefghijklmnopqrstuvwxyz"
             dict_character = list(self.character_str)
@@ -36,11 +95,13 @@ class BaseRecLabelDecode(object):
             with open(character_dict_path, "rb") as fin:
                 lines = fin.readlines()
                 for line in lines:
-                    line = line.decode('utf-8').strip("\n").strip("\r\n")
+                    line = line.decode("utf-8").strip("\n").strip("\r\n")
                     self.character_str.append(line)
             if use_space_char:
                 self.character_str.append(" ")
             dict_character = list(self.character_str)
+            if "arabic" in character_dict_path:
+                self.reverse = True
 
         dict_character = self.add_special_char(dict_character)
         self.dict = {}
@@ -48,33 +109,142 @@ class BaseRecLabelDecode(object):
             self.dict[char] = i
         self.character = dict_character
 
+    def pred_reverse(self, pred):
+        pred_re = []
+        c_current = ""
+        for c in pred:
+            if not bool(re.search("[a-zA-Z0-9 :*./%+-]", c)):
+                if c_current != "":
+                    pred_re.append(c_current)
+                pred_re.append(c)
+                c_current = ""
+            else:
+                c_current += c
+        if c_current != "":
+            pred_re.append(c_current)
+
+        return "".join(pred_re[::-1])
+
     def add_special_char(self, dict_character):
         return dict_character
 
-    def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+    def get_word_info(self, text, selection):
+        """
+        Group the decoded characters and record the corresponding decoded positions.
+
+        Args:
+            text: the decoded text
+            selection: the bool array that identifies which columns of features are decoded as non-separated characters
+        Returns:
+            word_list: list of the grouped words
+            word_col_list: list of decoding positions corresponding to each character in the grouped word
+            state_list: list of marker to identify the type of grouping words, including two types of grouping words:
+                        - 'cn': continous chinese characters (e.g., 你好啊)
+                        - 'en&num': continous english characters (e.g., hello), number (e.g., 123, 1.123), or mixed of them connected by '-' (e.g., VGG-16)
+                        The remaining characters in text are treated as separators between groups (e.g., space, '(', ')', etc.).
+        """
+        state = None
+        word_content = []
+        word_col_content = []
+        word_list = []
+        word_col_list = []
+        state_list = []
+        valid_col = np.where(selection == True)[0]
+
+        for c_i, char in enumerate(text):
+            if "\u4e00" <= char <= "\u9fff":
+                c_state = "cn"
+            elif bool(re.search("[a-zA-Z0-9]", char)):
+                c_state = "en&num"
+            else:
+                c_state = "splitter"
+
+            if (
+                char == "."
+                and state == "en&num"
+                and c_i + 1 < len(text)
+                and bool(re.search("[0-9]", text[c_i + 1]))
+            ):  # grouping floting number
+                c_state = "en&num"
+            if (
+                char == "-" and state == "en&num"
+            ):  # grouping word with '-', such as 'state-of-the-art'
+                c_state = "en&num"
+
+            if state == None:
+                state = c_state
+
+            if state != c_state:
+                if len(word_content) != 0:
+                    word_list.append(word_content)
+                    word_col_list.append(word_col_content)
+                    state_list.append(state)
+                    word_content = []
+                    word_col_content = []
+                state = c_state
+
+            if state != "splitter":
+                word_content.append(char)
+                word_col_content.append(valid_col[c_i])
+
+        if len(word_content) != 0:
+            word_list.append(word_content)
+            word_col_list.append(word_col_content)
+            state_list.append(state)
+
+        return word_list, word_col_list, state_list
+
+    def decode(
+        self,
+        text_index,
+        text_prob=None,
+        is_remove_duplicate=False,
+        return_word_box=False,
+    ):
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         batch_size = len(text_index)
         for batch_idx in range(batch_size):
-            char_list = []
-            conf_list = []
-            for idx in range(len(text_index[batch_idx])):
-                if text_index[batch_idx][idx] in ignored_tokens:
-                    continue
-                if is_remove_duplicate:
-                    # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
-                        continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
-                if text_prob is not None:
-                    conf_list.append(text_prob[batch_idx][idx])
-                else:
-                    conf_list.append(1)
-            text = ''.join(char_list)
-            result_list.append((text, np.mean(conf_list)))
+            selection = np.ones(len(text_index[batch_idx]), dtype=bool)
+            if is_remove_duplicate:
+                selection[1:] = text_index[batch_idx][1:] != text_index[batch_idx][:-1]
+            for ignored_token in ignored_tokens:
+                selection &= text_index[batch_idx] != ignored_token
+
+            char_list = [
+                self.character[text_id] for text_id in text_index[batch_idx][selection]
+            ]
+            if text_prob is not None:
+                conf_list = text_prob[batch_idx][selection]
+            else:
+                conf_list = [1] * len(selection)
+            if len(conf_list) == 0:
+                conf_list = [0]
+
+            text = "".join(char_list)
+
+            if self.reverse:  # for arabic rec
+                text = self.pred_reverse(text)
+
+            if return_word_box:
+                word_list, word_col_list, state_list = self.get_word_info(
+                    text, selection
+                )
+                result_list.append(
+                    (
+                        text,
+                        np.mean(conf_list).tolist(),
+                        [
+                            len(text_index[batch_idx]),
+                            word_list,
+                            word_col_list,
+                            state_list,
+                        ],
+                    )
+                )
+            else:
+                result_list.append((text, np.mean(conf_list).tolist()))
         return result_list
 
     def get_ignored_tokens(self):
@@ -687,6 +857,113 @@ class CANLabelDecode(BaseRecLabelDecode):
         preds_idx = pred_prob.argmax(axis=2)
 
         text = self.decode(preds_idx)
+        if label is None:
+            return text
+        label = self.decode(label)
+        return text, label
+
+class VLLabelDecode(BaseRecLabelDecode):
+    """Convert between text-label and text-index"""
+
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(VLLabelDecode, self).__init__(character_dict_path, use_space_char)
+        self.max_text_length = kwargs.get("max_text_length", 25)
+        self.nclass = len(self.character)
+
+    def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
+        """convert text-index into text-label."""
+        result_list = []
+        ignored_tokens = self.get_ignored_tokens()
+        batch_size = len(text_index)
+        for batch_idx in range(batch_size):
+            selection = np.ones(len(text_index[batch_idx]), dtype=bool)
+            if is_remove_duplicate:
+                selection[1:] = text_index[batch_idx][1:] != text_index[batch_idx][:-1]
+            for ignored_token in ignored_tokens:
+                selection &= text_index[batch_idx] != ignored_token
+
+            char_list = [
+                self.character[text_id - 1]
+                for text_id in text_index[batch_idx][selection]
+            ]
+            if text_prob is not None:
+                conf_list = text_prob[batch_idx][selection]
+            else:
+                conf_list = [1] * len(selection)
+            if len(conf_list) == 0:
+                conf_list = [0]
+
+            text = "".join(char_list)
+            result_list.append((text, np.mean(conf_list).tolist()))
+        return result_list
+
+    def __call__(self, preds, label=None, length=None, *args, **kwargs):
+        if len(preds) == 2:  # eval mode
+            text_pre, x = preds
+            b = text_pre.shape[1]
+            lenText = self.max_text_length
+            nsteps = self.max_text_length
+
+            if not isinstance(text_pre, torch.Tensor):
+                text_pre = torch.tensor(text_pre, dtype=torch.float32)
+
+            out_res = torch.zeros([lenText, b, self.nclass], dtype=x.dtype)
+            out_length = torch.zeros([b], dtype=x.dtype)
+            now_step = 0
+            for _ in range(nsteps):
+                if 0 in out_length and now_step < nsteps:
+                    tmp_result = text_pre[now_step, :, :]
+                    out_res[now_step] = tmp_result
+                    tmp_result = tmp_result.topk(1)[1].squeeze(axis=1)
+                    for j in range(b):
+                        if out_length[j] == 0 and tmp_result[j] == 0:
+                            out_length[j] = now_step + 1
+                    now_step += 1
+            for j in range(0, b):
+                if int(out_length[j]) == 0:
+                    out_length[j] = nsteps
+            start = 0
+            output = torch.zeros(
+                [int(out_length.sum()), self.nclass], dtype=x.dtype
+            )
+            for i in range(0, b):
+                cur_length = int(out_length[i])
+                output[start : start + cur_length] = out_res[0:cur_length, i, :]
+                start += cur_length
+            net_out = output
+            length = out_length
+
+        else:  # train mode
+            net_out = preds[0]
+            length = length
+            net_out = torch.cat([t[:l] for t, l in zip(net_out, length)])
+        text = []
+        if not isinstance(net_out, torch.Tensor):
+            net_out = torch.tensor(net_out, dtype=torch.float32)
+        net_out = F.softmax(net_out, dim=1)
+        for i in range(0, length.shape[0]):
+            if i == 0:
+                start_idx = 0
+                end_idx = int(length[i])
+            else:
+                start_idx = int(length[:i].sum())
+                end_idx = int(length[:i].sum() + length[i])
+            preds_idx = net_out[start_idx:end_idx].topk(1)[1][:, 0].tolist()
+            preds_text = "".join(
+                [
+                    (
+                        self.character[idx - 1]
+                        if idx > 0 and idx <= len(self.character)
+                        else ""
+                    )
+                    for idx in preds_idx
+                ]
+            )
+            preds_prob = net_out[start_idx:end_idx].topk(1)[0][:, 0]
+            preds_prob = torch.exp(
+                torch.log(preds_prob).sum() / (preds_prob.shape[0] + 1e-6)
+            )
+            text.append((preds_text, float(preds_prob)))
         if label is None:
             return text
         label = self.decode(label)

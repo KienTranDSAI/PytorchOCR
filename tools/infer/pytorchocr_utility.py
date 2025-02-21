@@ -349,6 +349,19 @@ def AnalysisConfig(weights_path, yaml_path=None, char_num=None):
                    'encoder_type':'svtr'},
            'Head':{'name':'CTCHead', 'fc_decay': 2e-05}
            }
+    elif 'visionlan' in weights_name:
+        network_config = {'model_type':'rec',
+           'algorithm':'VisionLAN',
+           'Transform':None,
+           'Backbone':{'name':'ResNet45',
+                       'strides': [2, 2, 2, 1, 1]},
+           'Head':{'name':'VLHead',
+            "n_layers": 3,
+            "n_position": 256,
+            "n_dim": 512,
+            "max_text_length": 40,
+            "training_step": 'LA'}
+           }
     else:
         network_config = {'model_type': 'rec',
                           'algorithm': 'CRNN',

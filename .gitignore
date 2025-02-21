@@ -149,3 +149,8 @@ rec_models*
 *测试数据*
 
 *.pth
+*states
+*.png
+*.jpg
+/output
+/pretrained_models

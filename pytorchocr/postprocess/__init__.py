@@ -15,7 +15,7 @@ def build_post_process(config, global_config=None):
     from .sast_postprocess import SASTPostProcess
     from .fce_postprocess import FCEPostProcess
     from .rec_postprocess import CTCLabelDecode, AttnLabelDecode, SRNLabelDecode, TableLabelDecode, \
-        NRTRLabelDecode, SARLabelDecode, ViTSTRLabelDecode, RFLLabelDecode
+        NRTRLabelDecode, SARLabelDecode, ViTSTRLabelDecode, RFLLabelDecode, VLLabelDecode
     from .cls_postprocess import ClsPostProcess
     from .pg_postprocess import PGPostProcess
     from .rec_postprocess import CANLabelDecode
@@ -24,7 +24,7 @@ def build_post_process(config, global_config=None):
         'DBPostProcess', 'EASTPostProcess', 'SASTPostProcess', 'CTCLabelDecode',
         'AttnLabelDecode', 'ClsPostProcess', 'SRNLabelDecode', 'PGPostProcess',
         'TableLabelDecode', 'NRTRLabelDecode', 'SARLabelDecode', 'FCEPostProcess',
-        'ViTSTRLabelDecode','CANLabelDecode', 'RFLLabelDecode'
+        'ViTSTRLabelDecode','CANLabelDecode', 'RFLLabelDecode',"VLLabelDecode",
     ]
 
     if config['name'] == 'PSEPostProcess':
